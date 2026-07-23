@@ -1,0 +1,29 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "sonora",
+      "intents": [
+        { "name": "AMAZON.PauseIntent", "samples": [] },
+        { "name": "AMAZON.ResumeIntent", "samples": [] },
+        { "name": "AMAZON.NextIntent", "samples": [] },
+        { "name": "AMAZON.PreviousIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        {
+          "name": "PlayQueryIntent",
+          "slots": [ { "name": "query", "type": "AMAZON.SearchQuery" } ],
+          "samples": [
+            "pon {query}",
+            "ponme {query}",
+            "reproduce {query}",
+            "pon la cancion {query}",
+            "pon musica de {query}",
+            "quiero escuchar {query}"
+          ]
+        }
+      ],
+      "types": []
+    }
+  }
+}

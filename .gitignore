@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.db
+.DS_Store
+cookies/*.txt
+*.bak
+*.bak.*
+data/
+/music/*
+!/music/.gitkeep

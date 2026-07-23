@@ -1,0 +1,41 @@
+services:
+  sonora:
+    build: .
+    image: sonora-server
+    container_name: sonora-server
+    restart: unless-stopped
+    depends_on:
+      - bgutil-provider
+    ports:
+      - "${SONORA_PORT:-8100}:8000"
+    environment:
+      - SONORA_USER=${SONORA_USER:-sonora}
+      - SONORA_PASSWORD=${SONORA_PASSWORD:-sonora}
+      - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-1}
+      - TRANSCODE_CACHE_MAX_BYTES=${TRANSCODE_CACHE_MAX_BYTES:-5368709120}
+      - COOKIES_FILE=${COOKIES_FILE:-/cookies/cookies.txt}
+      - POT_PROVIDER_URL=${POT_PROVIDER_URL:-http://bgutil-provider:4416}
+      - LIDARR_URL=${LIDARR_URL:-}
+      - LIDARR_API_KEY=${LIDARR_API_KEY:-}
+      - LIDARR_QUALITY_PROFILE=${LIDARR_QUALITY_PROFILE:-2}
+      - ALEXA_SKILL_ID=${ALEXA_SKILL_ID:-}
+      - ALEXA_USER=${ALEXA_USER:-}
+      - ALEXA_CLIENT_ID=${ALEXA_CLIENT_ID:-sonora-alexa}
+      - ALEXA_CLIENT_SECRET=${ALEXA_CLIENT_SECRET:-change-me}
+      - ALEXA_TOKEN=${ALEXA_TOKEN:-change-me}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://your-server.example.com}
+    volumes:
+      - sonora_cache:/cache
+      - sonora_data:/data
+      - ./cookies:/cookies
+      - ${MUSIC_DIR:-./music}:/music
+
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: sonora-pot-provider
+    restart: unless-stopped
+    init: true
+
+volumes:
+  sonora_cache:
+  sonora_data:
