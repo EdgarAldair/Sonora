@@ -3,6 +3,11 @@ services:
     build: .
     image: sonora-server
     container_name: sonora-server
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
     depends_on:
       - bgutil-provider
@@ -33,6 +38,11 @@ services:
   bgutil-provider:
     image: brainicism/bgutil-ytdlp-pot-provider:latest
     container_name: sonora-pot-provider
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
     init: true
 

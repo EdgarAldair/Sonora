@@ -177,7 +177,7 @@ def _ydl_opts(audio_format: str) -> dict:
         "extractor_retries": 3,
         "fragment_retries": 3,
     }
-    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
+    if COOKIES_FILE and os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
         opts["cookiefile"] = COOKIES_FILE
     if POT_PROVIDER_URL:
         opts["extractor_args"] = {
@@ -380,7 +380,11 @@ async def _ensure_transcoded(video_id: str, quality: str) -> str:
 @app.get("/health")
 def health():
     files = glob.glob(os.path.join(CACHE_DIR, "*.m4a"))
-    cookies_active = bool(COOKIES_FILE and os.path.exists(COOKIES_FILE))
+    cookies_active = bool(
+        COOKIES_FILE
+        and os.path.exists(COOKIES_FILE)
+        and os.path.getsize(COOKIES_FILE) > 0
+    )
     return {"status": "ok", "cached_tracks": len(files), "cookies": cookies_active}
 
 
