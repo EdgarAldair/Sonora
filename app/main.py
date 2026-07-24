@@ -176,6 +176,7 @@ def _ydl_opts(audio_format: str) -> dict:
         "retries": 3,
         "extractor_retries": 3,
         "fragment_retries": 3,
+        "remote_components": ["ejs:github"],
     }
     if COOKIES_FILE and os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 0:
         opts["cookiefile"] = COOKIES_FILE
@@ -1910,7 +1911,7 @@ def _user_id_from_token(token):
 
 
 def _alexa_stream_url(video_id, token=None):
-    return f"{PUBLIC_BASE_URL}/api/stream/{video_id}?q=high&token={token or ALEXA_TOKEN}"
+    return f"{PUBLIC_BASE_URL}/api/stream/{video_id}?q=normal&token={token or ALEXA_TOKEN}"
 
 
 def _alexa_search(query):
@@ -2062,6 +2063,10 @@ def _alexa_link_account():
 
 
 def _alexa_play(item, index, behavior="REPLACE_ALL", offset=0, prev_token=None, speak=None, token=None):
+    try:
+        asyncio.create_task(_ensure_transcoded(item["videoId"], "normal"))
+    except Exception:
+        pass
     stream = {
         "token": f"{index}|{item['videoId']}",
         "url": _alexa_stream_url(item["videoId"], token),
