@@ -1802,11 +1802,17 @@ def recent_clear(request: Request, _=Depends(require_token)):
 
 @app.on_event("startup")
 async def _warmup_youtube():
+    interval = max(300, YTMUSIC_MAX_AGE // 2)
+
     async def _run():
-        try:
-            await asyncio.to_thread(ytmusic.search, "top hits", "songs", None, 3)
-        except Exception:
-            pass
+        while True:
+            try:
+                await asyncio.to_thread(ytmusic._client_for, True)
+                await asyncio.to_thread(ytmusic.search, "top hits", "songs", None, 3)
+            except Exception:
+                pass
+            await asyncio.sleep(interval)
+
     try:
         asyncio.create_task(_run())
     except Exception:
@@ -2055,6 +2061,50 @@ def _user_id_from_token(token):
 
 def _alexa_stream_url(video_id, token=None):
     return f"{PUBLIC_BASE_URL}/api/stream/{video_id}?q=normal&token={token or ALEXA_TOKEN}"
+
+
+def _uid_for_token(token):
+    if not token:
+        return None
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT user_id FROM sessions WHERE token = ?", (token,)
+        ).fetchone()
+    finally:
+        conn.close()
+    return row["user_id"] if row else None
+
+
+def _record_alexa_recent(token, item):
+    import json as _json
+
+    uid = _uid_for_token(token)
+    vid = item.get("videoId") if isinstance(item, dict) else None
+    if not uid or not vid:
+        return
+    artist = item.get("artist") or ""
+    track = {
+        "videoId": vid,
+        "title": item.get("title") or "",
+        "artists": [{"name": a.strip()} for a in artist.split(",") if a.strip()],
+    }
+    now = time.time()
+    conn = _db()
+    try:
+        conn.execute(
+            "INSERT INTO recent_tracks (user_id, video_id, data, played_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(user_id, video_id) DO UPDATE SET data=excluded.data, played_at=excluded.played_at",
+            (uid, vid, _json.dumps(track), now),
+        )
+        conn.execute(
+            "DELETE FROM recent_tracks WHERE user_id = ? AND video_id NOT IN "
+            "(SELECT video_id FROM recent_tracks WHERE user_id = ? ORDER BY played_at DESC LIMIT ?)",
+            (uid, uid, _RECENT_LIMIT),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _alexa_search(query):
@@ -2313,6 +2363,13 @@ async def alexa(request: Request):
             try:
                 state["index"] = int(token.split("|", 1)[0])
                 _alexa_save_state(user_key, state)
+            except Exception:
+                pass
+            try:
+                idx = state.get("index", 0)
+                queue = state.get("queue") or []
+                if 0 <= idx < len(queue):
+                    _record_alexa_recent(user_token, queue[idx])
             except Exception:
                 pass
         elif sub in ("PlaybackStopped", "PlaybackNearlyFinished"):
