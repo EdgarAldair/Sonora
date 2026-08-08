@@ -195,6 +195,40 @@ def _song_result(r: dict) -> dict | None:
     }
 
 
+def _len_to_secs(value) -> int | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        nums = [int(p) for p in value.split(":")]
+    except ValueError:
+        return None
+    secs = 0
+    for n in nums:
+        secs = secs * 60 + n
+    return secs
+
+
+def _watch_track_result(t: dict) -> dict | None:
+    video_id = t.get("videoId")
+    if not video_id:
+        return None
+    album = t.get("album")
+    length = t.get("length")
+    return {
+        "videoId": video_id,
+        "title": t.get("title"),
+        "artists": [
+            {"name": a.get("name"), "id": a.get("id")}
+            for a in t.get("artists", [])
+            if isinstance(a, dict) and a.get("name")
+        ],
+        "album": album.get("name") if isinstance(album, dict) else album,
+        "duration": length,
+        "durationSeconds": t.get("duration_seconds") or _len_to_secs(length),
+        "thumbnail": _pick_thumb(t.get("thumbnail") or t.get("thumbnails") or []),
+    }
+
+
 def _ydl_opts(audio_format: str) -> dict:
     opts = {
         "format": audio_format,
@@ -427,20 +461,23 @@ def search(
     q: str,
     type: str = "songs",
     limit: int = 20,
+    offset: int = 0,
     artists: int = 0,
     _=Depends(require_token),
 ):
     if not q.strip():
-        return {"results": [], "artists": []}
+        return {"results": [], "artists": [], "hasMore": False}
     try:
-        raw = ytmusic.search(q, filter=type, limit=limit)
+        raw = ytmusic.search(q, filter=type, limit=limit + offset)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"search failed: {e}")
 
-    results = [s for s in (_song_result(r) for r in raw) if s]
+    all_results = [s for s in (_song_result(r) for r in raw) if s]
+    results = all_results[offset : offset + limit]
+    has_more = len(all_results) > offset + limit
 
     artist_hits = []
-    if artists and type == "songs":
+    if artists and offset == 0 and type == "songs":
         try:
             araw = ytmusic.search(q, filter="artists", limit=3)
         except Exception:
@@ -460,7 +497,71 @@ def search(
                 }
             )
 
-    return {"results": results, "artists": artist_hits}
+    return {"results": results, "artists": artist_hits, "hasMore": has_more}
+
+
+@app.get("/api/radio/{video_id}")
+def radio(video_id: str, limit: int = 40, _=Depends(require_token)):
+    try:
+        watch = ytmusic.get_watch_playlist(videoId=video_id, radio=True)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"radio failed: {e}")
+    tracks = watch.get("tracks") or []
+    seen = set()
+    out = []
+    for t in tracks:
+        s = _watch_track_result(t)
+        if not s or s["videoId"] in seen:
+            continue
+        seen.add(s["videoId"])
+        out.append(s)
+        if len(out) >= limit:
+            break
+    return {"results": out}
+
+
+@app.get("/api/recommendations")
+def recommendations(request: Request, limit: int = 30, _=Depends(require_token)):
+    import json as _json
+
+    uid = _uid_or_401(request)
+    conn = _db()
+    try:
+        rows = conn.execute(
+            "SELECT data FROM recent_tracks WHERE user_id = ? ORDER BY played_at DESC LIMIT 10",
+            (uid,),
+        ).fetchall()
+    finally:
+        conn.close()
+    seeds = []
+    seen = set()
+    for r in rows:
+        try:
+            track = _json.loads(r["data"])
+        except (ValueError, TypeError):
+            continue
+        vid = track.get("videoId")
+        if vid and vid not in seen:
+            seeds.append(vid)
+            seen.add(vid)
+    out = []
+    for seed in seeds[:4]:
+        if len(out) >= limit:
+            break
+        try:
+            watch = ytmusic.get_watch_playlist(videoId=seed, radio=True)
+            tracks = watch.get("tracks") or []
+        except Exception:
+            continue
+        for t in tracks:
+            s = _watch_track_result(t)
+            if not s or s["videoId"] in seen:
+                continue
+            seen.add(s["videoId"])
+            out.append(s)
+            if len(out) >= limit:
+                break
+    return {"results": out, "seeded": bool(seeds)}
 
 
 def _albums_from_search(name: str) -> list[dict]:
