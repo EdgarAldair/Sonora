@@ -6,6 +6,7 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
 import time
 
 import httpx
@@ -54,7 +55,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ytmusic = YTMusic()
+YTMUSIC_MAX_AGE = int(os.getenv("YTMUSIC_MAX_AGE", "3600"))
+
+
+class _YTMusicProxy:
+    def __init__(self):
+        self._client = None
+        self._created = 0.0
+        self._lock = threading.Lock()
+
+    def _client_for(self, force=False):
+        with self._lock:
+            stale = time.time() - self._created > YTMUSIC_MAX_AGE
+            if force or self._client is None or stale:
+                self._client = YTMusic()
+                self._created = time.time()
+            return self._client
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            try:
+                return getattr(self._client_for(), name)(*args, **kwargs)
+            except Exception:
+                return getattr(self._client_for(force=True), name)(*args, **kwargs)
+
+        return call
+
+
+ytmusic = _YTMusicProxy()
 _url_cache: dict[tuple[str, str], dict] = {}
 _transcode_locks: dict[str, asyncio.Lock] = {}
 
@@ -558,11 +586,25 @@ async def stream(
 
 
 @app.get("/api/lyrics/{video_id}")
-def lyrics(video_id: str, _=Depends(require_token)):
+def lyrics(video_id: str, title: str = "", artist: str = "", _=Depends(require_token)):
     cached = _LYRICS_CACHE.get(video_id)
     if cached is not None:
         return cached
-    result = _compute_lyrics(video_id)
+    is_youtube = bool(video_id) and not video_id.startswith(("nav:", "lib:"))
+    result = _compute_lyrics(video_id) if is_youtube else {
+        "synced": False, "lines": [], "plain": None, "source": None
+    }
+    has_lyrics = result.get("synced") or result.get("plain")
+    if not has_lyrics and title.strip():
+        try:
+            hits = ytmusic.search(f"{title} {artist}".strip(), filter="songs", limit=1)
+        except Exception:
+            hits = []
+        alt = hits[0].get("videoId") if hits else None
+        if alt and alt != video_id:
+            alt_result = _compute_lyrics(alt)
+            if alt_result.get("synced") or alt_result.get("plain"):
+                result = alt_result
     _LYRICS_CACHE[video_id] = result
     return result
 
