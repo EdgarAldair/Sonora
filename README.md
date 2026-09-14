@@ -25,6 +25,18 @@ it over HTTPS with a reverse proxy / tunnel).
 
 Put your music in `./music`, or set `MUSIC_DIR` in `.env` to your library path.
 
+## Updating
+
+YouTube changes often break older yt-dlp releases: songs stop playing and the
+logs show `HTTP Error 403: Forbidden`. Rebuilding with the latest yt-dlp and
+PO token provider fixes it:
+
+```
+./update.sh
+```
+
+The script keeps a `sonora-server:backup-<date>` image tag so you can roll back.
+
 ## Configuration
 
 All settings are environment variables; see `.env.example`. Do not commit `.env`.
