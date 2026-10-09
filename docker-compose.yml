@@ -1,3 +1,4 @@
+name: sonora-server
 services:
   sonora:
     build: .
